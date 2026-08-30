@@ -16,9 +16,10 @@ import { renderAppPage, renderWatchDetailPage } from '../research/ui.js';
 import { validateWatchlistInput } from '../research/input.js';
 import type { WatchlistToken } from '../store/types.js';
 
-const { deps, environment } = buildMonitorRuntime();
-const app = Fastify({ logger: true });
-const monitor = new TokenMonitor(deps);
+void (async () => {
+  const { deps, environment } = buildMonitorRuntime();
+  const app = Fastify({ logger: true });
+  const monitor = new TokenMonitor(deps);
 
 app.setErrorHandler((error, _request, reply) => {
   if (error instanceof z.ZodError) {
@@ -140,6 +141,7 @@ app.patch('/watchlist/:id', async (request, reply) => {
   const { status } = statusPatchSchema.parse(request.body as unknown);
   await deps.watchlist.setStatus(id, status);
   return { status };
+});
 
 // ---------------------------------------------------------------------------
 // History and outcomes
@@ -220,10 +222,6 @@ app.get('/watchlist/:id/view', async (request, reply) => {
   return renderWatchDetailPage(token);
 });
 
-await app.listen({ host: '127.0.0.1', port: environment.API_PORT });
-
-});
-
 app.delete('/watchlist/:id', async (request, reply) => {
   const { id } = request.params as { id: string };
   const token = await loadTokenOr404(id);
@@ -232,3 +230,6 @@ app.delete('/watchlist/:id', async (request, reply) => {
   await deps.watchlist.setStatus(id, 'PAUSED');
   return { status: 'PAUSED', note: 'Token paused; snapshot history preserved.' };
 });
+
+await app.listen({ host: '127.0.0.1', port: environment.API_PORT });
+})();
