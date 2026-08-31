@@ -27,7 +27,6 @@ export interface WorkerEnv {
   SUPABASE_SERVICE_ROLE_KEY: string;
   ALCHEMY_API_KEY?: string;
   Alchemy_API_KEY?: string;
-  HELIUS_API_KEY?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   DEFAULT_CHAIN?: string;

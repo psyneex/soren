@@ -4,15 +4,7 @@ import { base64ToBytes } from '../lib/bytes.js';
 import type { TtlCache } from './cache.js';
 import type { JsonRpcClient, RpcParams } from './json-rpc.js';
 import type { AlchemyPricesClient } from './prices.js';
-import type { HeliusRpcClient } from './helius.js';
 import type { DexScreenerClient } from './dexscreener.js';
-import {
-  FLOW_TX_DECODE_LIMIT,
-  fetchHolderCensus,
-  fetchSignaturesWithinWindow,
-  summarizeHolderCensus,
-  walletTokenDelta,
-} from './helius.js';
 import type {
   MarketDataModel,
   TokenAgeModel,
@@ -35,11 +27,17 @@ const METAPLEX_PROGRAM = 'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s';
 const METADATA_NAME_LEN_OFFSET = 65;
 const METADATA_SYMBOL_LEN_OFFSET = 101;
 
+/** Signatures fetched per getSignaturesForAddress page. */
+const FLOW_PAGE_LIMIT = 1000;
+/** Hard page budget per wallet (prevents runaway history walks). */
+const FLOW_MAX_PAGES = 6;
+/** Transactions actually decoded per wallet within the window. */
+const FLOW_TX_DECODE_LIMIT = 120;
+
 /**
- * Structural caller shape shared by JsonRpcClient and HeliusRpcClient so
- * Solana helpers can use either provider without depending on a class.
+ * RPC caller shape for Solana enrichment helpers.
  */
-export type SolanaRpcCaller = {
+type SolanaRpcCaller = {
   call(chain: SupportedChain, method: string, params: RpcParams): Promise<unknown>;
 };
 
@@ -349,13 +347,13 @@ function emptyFlowEntry(wallet: string, note: string, zero = false): WalletActiv
 }
 
 /**
- * Bounded 30-day per-wallet token flow via Helius: walks the wallet's token
+ * Bounded 30-day per-wallet token flow: walks the wallet's token
  * account signature history back to the cutoff (or the page budget) and
  * decodes up to FLOW_TX_DECODE_LIMIT transactions for pre/post balance
  * deltas. Bounds are always disclosed in sampleLimitNote.
  */
 async function fetchWalletFlow30d(
-  helius: HeliusRpcClient,
+  rpc: SolanaRpcCaller,
   cache: TtlCache,
   chain: SupportedChain,
   mint: string,
@@ -364,7 +362,7 @@ async function fetchWalletFlow30d(
   now: Date,
 ): Promise<WalletActivityModel> {
   const cutoffSeconds = Math.floor(now.getTime() / 1000) - FLOW_WINDOW_DAYS * 86_400;
-  const scan = await fetchSignaturesWithinWindow(helius, cache, chain, tokenAccount, cutoffSeconds);
+  const scan = await fetchSignaturesWithinWindow(rpc, cache, chain, tokenAccount, cutoffSeconds);
 
   let incoming = 0;
   let outgoing = 0;
@@ -376,7 +374,7 @@ async function fetchWalletFlow30d(
 
   for (const sig of sampled) {
     const tx = (await cache.memoize(`sol:${chain}:tx:${sig.signature}`, 60 * 60_000, () =>
-      helius.call(chain, 'getTransaction', [
+      rpc.call(chain, 'getTransaction', [
         sig.signature,
         { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 },
       ]))) as TokenBalanceTx;
@@ -447,6 +445,109 @@ const FAILED_ACTIVITY: Omit<WalletActivityModel, 'wallet'> = {
   sampleLimitNote: '24h activity lookup failed; flow unknown.',
 };
 
+// ---------------------------------------------------------------------------
+// Signature window + token-balance delta helpers (standard Solana RPC)
+// ---------------------------------------------------------------------------
+
+interface FlowWindow {
+  signature: string;
+  blockTime: number | null;
+}
+
+interface FlowScan {
+  signatures: FlowWindow[];
+  reachedCutoff: boolean;
+  pages: number;
+}
+
+/**
+ * Walks the target account's signature history backwards until the cutoff
+ * (default 30 days) or the page budget is hit. `reachedCutoff` false with a
+ * full page budget means the window is bounded, not exhausted.
+ */
+async function fetchSignaturesWithinWindow(
+  rpc: { call(chain: SupportedChain, method: string, params: RpcParams): Promise<unknown> },
+  cache: { memoize<T>(key: string, ttlMs: number, producer: () => Promise<T>): Promise<T> },
+  chain: SupportedChain,
+  address: string,
+  cutoffSeconds: number,
+): Promise<FlowScan> {
+  const cacheKey = `sol:${chain}:win-sigs:${address}:${Math.floor(cutoffSeconds / 3600)}`;
+  return cache.memoize(cacheKey, 5 * 60_000, async () => {
+    const signatures: FlowWindow[] = [];
+    let before: string | null = null;
+    let pages = 0;
+    let reachedCutoff = false;
+
+    while (pages < FLOW_MAX_PAGES) {
+      const options: Record<string, unknown> = { limit: FLOW_PAGE_LIMIT };
+      if (before) options.before = before;
+
+      const batch = (await rpc.call(chain, 'getSignaturesForAddress', [address, options])) as Array<{
+        signature?: string;
+        blockTime?: number | null;
+      }>;
+
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      pages += 1;
+
+      for (const entry of batch) {
+        if (!entry.signature) continue;
+        if (typeof entry.blockTime === 'number' && entry.blockTime < cutoffSeconds) {
+          reachedCutoff = true;
+          break;
+        }
+        signatures.push({ signature: entry.signature, blockTime: entry.blockTime ?? null });
+      }
+
+      if (reachedCutoff || batch.length < FLOW_PAGE_LIMIT) break;
+      before = batch[batch.length - 1].signature ?? null;
+      if (!before) break;
+    }
+
+    return { signatures, reachedCutoff, pages };
+  });
+}
+
+interface TokenBalanceDelta {
+  /** Net token-amount change for the wallet across the transaction. */
+  delta: number;
+  /** True when the wallet's token balances appear in pre/post state. */
+  matched: boolean;
+}
+
+/**
+ * Computes the wallet's net token-amount delta for one mint from a
+ * transaction's pre/postTokenBalances. Returns matched:false when the wallet
+ * holds no accounts for the mint in this transaction.
+ */
+function walletTokenDelta(
+  tx: {
+    meta?: {
+      preTokenBalances?: Array<{ accountIndex: number; owner?: string; uiTokenAmount?: { uiAmount?: number | null } }>;
+      postTokenBalances?: Array<{ accountIndex: number; owner?: string; uiTokenAmount?: { uiAmount?: number | null } }>;
+    } | null;
+  } | null,
+  mint: string,
+  wallet: string,
+): TokenBalanceDelta {
+  const pre = tx?.meta?.preTokenBalances ?? [];
+  const post = tx?.meta?.postTokenBalances ?? [];
+  const indexes = new Set<number>();
+  for (const entry of [...pre, ...post]) {
+    if (entry.owner === wallet) indexes.add(entry.accountIndex);
+  }
+  if (indexes.size === 0) return { delta: 0, matched: false };
+
+  let delta = 0;
+  for (const index of indexes) {
+    const before = pre.find((p) => p.accountIndex === index)?.uiTokenAmount?.uiAmount ?? 0;
+    const after = post.find((p) => p.accountIndex === index)?.uiTokenAmount?.uiAmount ?? before;
+    delta += (after ?? 0) - (before ?? 0);
+  }
+  return { delta, matched: true };
+}
+
 export async function enrichSolanaToken(
   rpc: SolanaRpcCaller,
   prices: AlchemyPricesClient | null,
@@ -455,7 +556,6 @@ export async function enrichSolanaToken(
   tokenAddress: string,
   wallets: string[],
   now: Date,
-  helius: HeliusRpcClient | null = null,
   dexscreener: DexScreenerClient | null = null,
 ): Promise<TokenEnrichment> {
   const observedAt = now.toISOString();
@@ -553,41 +653,18 @@ export async function enrichSolanaToken(
     notes.push('Token age unavailable: no usable mint signature history and no DexScreener pair age.');
   }
 
-  // Holder census via Helius. Exact metrics only when the census scanned every
-  // token account; otherwise the derived values are withheld, not sampled.
-  let holders: TokenHoldersModel = {
+  // Holder census is not available via standard Alchemy RPC; report as unavailable.
+  const holders: TokenHoldersModel = {
     holderCount: null,
     top100ConcentrationPercent: null,
     accountsScanned: 0,
     censusComplete: false,
     provider: null,
     observedAt,
-    notes: [],
+    notes: ['Holder census not available via Alchemy RPC; this input is withheld rather than reported from a sample.'],
   };
-  if (helius) {
-    try {
-      const census = await fetchHolderCensus(helius, cache, chain, tokenAddress);
-      const supplyRaw = supplyModel.totalSupplyRaw != null ? safeBigInt(supplyModel.totalSupplyRaw) : null;
-      const summary = summarizeHolderCensus(census, supplyRaw);
-      holders = {
-        holderCount: summary.holderCount,
-        top100ConcentrationPercent: summary.top100ConcentrationPercent,
-        accountsScanned: summary.accountsScanned,
-        censusComplete: census.complete,
-        provider: 'helius',
-        observedAt,
-        notes: census.complete
-          ? []
-          : [
-              `Census bounded at ${summary.accountsScanned} token accounts; holder count and top-100 concentration are withheld rather than reported from a sample.`,
-            ],
-      };
-    } catch (error) {
-      holders.notes.push(`Holder census unavailable: ${errorMessage(error)}`);
-    }
-  }
 
-  // Smart-money wallet balances + 24h activity (+ bounded 30-day flow via Helius).
+  // Smart-money wallet balances + 24h activity (+ bounded 30-day flow via standard RPC).
   const walletBalances: WalletBalanceModel[] = [];
   const walletActivity: WalletActivityModel[] = [];
   const walletFlow30d: WalletActivityModel[] = [];
@@ -617,27 +694,22 @@ export async function enrichSolanaToken(
       walletActivity.push({ ...EMPTY_ACTIVITY, wallet });
     }
 
-    if (helius) {
-      if (pubkey) {
-        try {
-          walletFlow30d.push(await fetchWalletFlow30d(helius, cache, chain, tokenAddress, wallet, pubkey, now));
-        } catch (error) {
-          notes.push(`30-day flow for ${shortWallet(wallet)} unavailable: ${errorMessage(error)}`);
-          walletFlow30d.push(emptyFlowEntry(wallet, '30-day flow lookup failed.'));
-        }
-      } else {
-        walletFlow30d.push(emptyFlowEntry(wallet, 'No token account found for this wallet on this mint.', true));
+    if (pubkey) {
+      try {
+        walletFlow30d.push(await fetchWalletFlow30d(rpc, cache, chain, tokenAddress, wallet, pubkey, now));
+      } catch (error) {
+        notes.push(`30-day flow for ${shortWallet(wallet)} unavailable: ${errorMessage(error)}`);
+        walletFlow30d.push(emptyFlowEntry(wallet, '30-day flow lookup failed.'));
       }
+    } else {
+      walletFlow30d.push(emptyFlowEntry(wallet, 'No token account found for this wallet on this mint.', true));
     }
   }
 
-  if (!helius) {
-    notes.push('Helius client not configured; 30-day wallet flow and the holder census were skipped.');
-  }
   notes.push('Token-wide transfer history is not enumerable via standard Solana RPC; per-wallet activity is provided instead.');
 
   return {
-    provider: helius ? 'helius' : 'alchemy',
+    provider: 'alchemy',
     chain,
     tokenAddress,
     source: 'ONCHAIN_RPC',

@@ -8,8 +8,8 @@ export interface JsonRpcClientOptions {
 export type RpcParams = Array<unknown> | Record<string, unknown>;
 
 /**
- * Structural RPC caller shared by the Alchemy and Helius clients so Solana
- * enrichment helpers can be provider-agnostic.
+ * Structural RPC caller for Alchemy so Solana enrichment helpers
+ * can work with the provider.
  */
 export interface RpcCaller {
   call(chain: SupportedChain, method: string, params: RpcParams, maxAttempts?: number): Promise<unknown>;

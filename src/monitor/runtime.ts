@@ -39,7 +39,6 @@ export function buildMonitorRuntime(env: EnvSource, clock: () => Date = () => ne
 
   const provider = createEnrichmentGateway({
     alchemyApiKey: environment.ALCHEMY_API_KEY,
-    heliusApiKey: environment.HELIUS_API_KEY,
   });
   const cache = new TtlCache();
   const dexscreener = new DexScreenerClient({ cache });

@@ -1,5 +1,5 @@
 export type ProviderSource = 'ONCHAIN_RPC';
-export type ProviderName = 'alchemy' | 'helius' | 'dexscreener';
+export type ProviderName = 'alchemy' | 'dexscreener';
 
 export interface TokenMetadataModel {
   name: string | null;
@@ -108,9 +108,9 @@ export interface TokenEnrichment {
   walletBalances: WalletBalanceModel[];
   /** Short-window (24h) wallet activity. */
   walletActivity: WalletActivityModel[];
-  /** Bounded 30-day wallet flow used by the accumulation analysis (Solana via Helius). */
+  /** Bounded 30-day wallet flow used by the accumulation analysis. */
   walletFlow30d: WalletActivityModel[];
-  /** Holder census (Solana via Helius). Exact only when the census completed. */
+  /** Holder census. Exact only when the census completed. */
   holders: TokenHoldersModel;
   notes: string[];
 }

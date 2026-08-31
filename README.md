@@ -14,7 +14,7 @@ The user enters only:
 
 Everything else — price, market cap, FDV, liquidity, volume, holders, flows, balances,
 activity — is retrieved or calculated automatically from free/public providers
-(DexScreener, Helius/Alchemy RPC, CoinGecko). Nansen is **not** a runtime dependency.
+(Alchemy RPC, DexScreener, CoinGecko). Nansen is **not** a runtime dependency.
 
 ## Commands
 
@@ -39,7 +39,7 @@ the watchlist API). A single Worker replaces the old Fastify API and the
 - Node.js 20+
 - A Cloudflare account with Workers enabled
 - A Supabase project with the migrations in `supabase/migrations/` applied
-- At least one on-chain provider key (Alchemy multi-chain, or Helius for Solana)
+- An Alchemy API key (multi-chain: EVM + Solana)
 
 ### Authentication
 
@@ -61,6 +61,7 @@ echo "your-alchemy-key"                     | wrangler secret put ALCHEMY_API_KE
 # Optional:
 echo "your-bot-token"                       | wrangler secret put TELEGRAM_BOT_TOKEN
 echo "your-chat-id"                         | wrangler secret put TELEGRAM_CHAT_ID
+
 ```
 
 **Local development** — copy `.dev.vars.example` to `.dev.vars` and fill in real
@@ -124,12 +125,9 @@ from the repository.
 |---|---|---|
 | `SUPABASE_URL` | yes | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Supabase service-role key |
-| `ALCHEMY_API_KEY` | yes* | Multi-chain enrichment (EVM + Solana) |
-| `HELIUS_API_KEY` | yes* | Solana-only enrichment (census + 30d flow) |
+| `ALCHEMY_API_KEY` | yes | Multi-chain enrichment (EVM + Solana) |
 | `TELEGRAM_BOT_TOKEN` | no | Enables Telegram signal alerts |
 | `TELEGRAM_CHAT_ID` | no | Telegram chat/channel for alerts |
-
-\* At least one of `ALCHEMY_API_KEY` or `HELIUS_API_KEY` is required.
 
 ## Architecture
 

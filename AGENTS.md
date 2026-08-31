@@ -91,9 +91,7 @@ The system should retrieve, when available:
 
 Use free RPC/indexing providers where useful.
 
-Helius and Alchemy are providers, not domain dependencies.
-
-Do not make Helius mandatory for the Golden Formula unless empirical testing demonstrates that its features improve predictive performance.
+Alchemy is the primary on-chain provider for all chains (EVM + Solana).
 
 ## Snapshot Model
 

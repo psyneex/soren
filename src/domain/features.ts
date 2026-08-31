@@ -201,7 +201,7 @@ export function computeAccumulationAcceleration(
       'accumulationAcceleration',
       50 + delta * config.accumulationRateScale,
       { ...inputs, path: 'flow30d', rateNow, rateBaseline, delta },
-      ['Accumulation-rate change vs the 30-day baseline daily rate (bounded Helius flow).'],
+      ['Accumulation-rate change vs the 30-day baseline daily rate.'],
     );
   }
 

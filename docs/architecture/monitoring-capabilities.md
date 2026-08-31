@@ -15,10 +15,8 @@ retrieved or calculated automatically.
 
 - DexScreener — primary free market data (price, liquidity, volume, price change,
   pair age, taker counts) on every chain, cached per cycle.
-- Helius / Alchemy — interchangeable Solana RPC; Helius additionally provides the
-  holder census and bounded 30-day wallet flow. Helius is never a mandatory scoring
-  dependency. With only a Helius key configured, a Solana-only provider uses the
-  Helius RPC endpoint for balances/activity and adds census/flow when available.
+- Alchemy — primary on-chain provider for all chains (EVM RPC + Prices API + Solana RPC).
+  Provides wallet balances, activity, and bounded 30-day wallet flow via standard RPC.
 - CoinGecko — free market-regime reference data (BTC, chain-native benchmark, broad
   market cap), cached for 10 minutes (≈2 requests per 60-minute cycle).
 

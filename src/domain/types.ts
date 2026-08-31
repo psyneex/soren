@@ -216,7 +216,7 @@ export interface SmartMoneyWalletFlow {
   netFlow24h: number | null;
   /** Current token balance; null = unknown. */
   balance: number | null;
-  /** Optional bounded 30-day net flow (Helius); null when unavailable. */
+  /** Optional bounded 30-day net flow; null when unavailable. */
   flow30d: number | null;
   notes: string[];
 }

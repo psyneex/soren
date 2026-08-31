@@ -70,7 +70,7 @@ export interface NewSnapshotRecord {
   chain: string;
   tokenAddress: string;
   observedAt: string;
-  /** Provider/source provenance summary, e.g. "alchemy+helius+dexscreener+coingecko". */
+  /** Provider/source provenance summary, e.g. "alchemy+dexscreener+coingecko". */
   source: string;
   raw: unknown;
   features: unknown;
