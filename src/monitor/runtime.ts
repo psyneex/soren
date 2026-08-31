@@ -1,10 +1,14 @@
 /**
  * Composition root for the monitoring phase: wires providers, repositories,
- * Telegram alerting, and the clock into the MonitorDeps used by the API and
- * the scheduled worker. Business logic stays in the domain/monitor modules;
- * this file only assembles infrastructure.
+ * Telegram alerting, and the clock into the MonitorDeps used by the HTTP
+ * handler and the scheduled worker. Business logic stays in the
+ * domain/monitor modules; this file only assembles infrastructure.
+ *
+ * The environment is always injected by the caller — the Cloudflare Worker
+ * passes its `env` bindings/secrets, local dev scripts pass `process.env` —
+ * so this module never reads a global itself (Worker-compatible).
  */
-import { loadEnvironment, loadTelegramConfig } from '../config/env.js';
+import { loadEnvironment, loadTelegramConfig, type EnvSource } from '../config/env.js';
 import { createDatabaseClient } from '../database/client.js';
 import { TtlCache } from '../providers/cache.js';
 import { CoinGeckoClient } from '../providers/coingecko.js';
@@ -29,9 +33,9 @@ export interface MonitorRuntime {
   environment: Environment;
 }
 
-export function buildMonitorRuntime(clock: () => Date = () => new Date()): MonitorRuntime {
-  const environment = loadEnvironment();
-  const db = createDatabaseClient();
+export function buildMonitorRuntime(env: EnvSource, clock: () => Date = () => new Date()): MonitorRuntime {
+  const environment = loadEnvironment(env);
+  const db = createDatabaseClient(environment.SUPABASE_URL, environment.SUPABASE_SERVICE_ROLE_KEY);
 
   const provider = createEnrichmentGateway({
     alchemyApiKey: environment.ALCHEMY_API_KEY,
@@ -43,7 +47,7 @@ export function buildMonitorRuntime(clock: () => Date = () => new Date()): Monit
 
   let alerting: SignalAlerter | null = null;
   if (environment.TELEGRAM_BOT_TOKEN && environment.TELEGRAM_CHAT_ID) {
-    const telegram = loadTelegramConfig();
+    const telegram = loadTelegramConfig(env);
     const client = new TelegramClient({ botToken: telegram.botToken });
     const store = new SupabaseNotificationStore(db, telegram.chatId as string);
     alerting = new TelegramSignalAlerter(new TelegramAlerting(client, telegram.chatId as string, store));

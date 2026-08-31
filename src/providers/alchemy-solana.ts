@@ -1,5 +1,6 @@
 import { getPricesNetwork, type SupportedChain } from '../chains/registry.js';
 import { base64FromBase58 } from '../chains/base58.js';
+import { base64ToBytes } from '../lib/bytes.js';
 import type { TtlCache } from './cache.js';
 import type { JsonRpcClient, RpcParams } from './json-rpc.js';
 import type { AlchemyPricesClient } from './prices.js';
@@ -98,12 +99,14 @@ async function fetchMintMetadata(
 
     const raw = accounts?.[0]?.account?.data?.[0];
     if (raw) {
-      const buffer = Buffer.from(raw, 'base64');
-      if (buffer.length >= METADATA_SYMBOL_LEN_OFFSET + 8) {
-        const nameLength = buffer.readUInt32LE(METADATA_NAME_LEN_OFFSET);
-        const name = buffer.toString('utf8', METADATA_NAME_LEN_OFFSET + 4, METADATA_NAME_LEN_OFFSET + 4 + nameLength);
-        const symbolLength = buffer.readUInt32LE(METADATA_SYMBOL_LEN_OFFSET);
-        const symbol = buffer.toString('utf8', METADATA_SYMBOL_LEN_OFFSET + 4, METADATA_SYMBOL_LEN_OFFSET + 4 + symbolLength);
+      const bytes = base64ToBytes(raw);
+      if (bytes.length >= METADATA_SYMBOL_LEN_OFFSET + 8) {
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const utf8 = new TextDecoder();
+        const nameLength = view.getUint32(METADATA_NAME_LEN_OFFSET, true);
+        const name = utf8.decode(bytes.subarray(METADATA_NAME_LEN_OFFSET + 4, METADATA_NAME_LEN_OFFSET + 4 + nameLength));
+        const symbolLength = view.getUint32(METADATA_SYMBOL_LEN_OFFSET, true);
+        const symbol = utf8.decode(bytes.subarray(METADATA_SYMBOL_LEN_OFFSET + 4, METADATA_SYMBOL_LEN_OFFSET + 4 + symbolLength));
         metadata.name = name || null;
         metadata.symbol = symbol || null;
       }

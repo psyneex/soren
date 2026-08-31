@@ -3,6 +3,9 @@
  * Adds the JUP token to the watchlist, runs one persisted evaluation cycle,
  * verifies the immutable snapshot + signal rows, then pauses the token to
  * leave the system clean. Run: npx tsx src/monitor/live-e2e.ts
+ *
+ * Reads configuration from the environment (env vars or a .env file loaded by
+ * tsx --env-file).
  */
 import { buildMonitorRuntime } from './runtime.js';
 import { TokenMonitor } from './cycle.js';
@@ -14,7 +17,7 @@ const WALLET_B = 'BhZRhq7AhE4LPnZP1hvDvpC5pSQtGN8kGGV5E1NQkRaj';
 const WALLET_C = '3QJ3a1fA4zC5k2yq8LwZ9v4K4gkL3dF2hM5U7QwZkNQ4';
 
 async function main(): Promise<void> {
-  const { deps } = buildMonitorRuntime();
+  const { deps } = buildMonitorRuntime(process.env);
 
   let token: WatchlistToken | null = await deps.watchlist.findByChainAndAddress('solana', JUP_MINT);
   if (!token) {

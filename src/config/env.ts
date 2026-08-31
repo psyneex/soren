@@ -1,6 +1,12 @@
-import 'dotenv/config';
 import { z } from 'zod';
 import { SUPPORTED_CHAINS } from '../chains/types.js';
+
+/**
+ * Raw environment shape as supplied by the runtime. Cloudflare Workers pass
+ * bindings/secrets as a flat Record<string, string | undefined>; local dev
+ * scripts and the Node test suite pass a process.env-like object. Both fit.
+ */
+export type EnvSource = Record<string, string | undefined>;
 
 const environmentSchema = z
   .object({
@@ -27,7 +33,7 @@ const environmentSchema = z
 
 export type Environment = z.infer<typeof environmentSchema>;
 
-export function loadTelegramConfig(source: NodeJS.ProcessEnv = process.env): {
+export function loadTelegramConfig(source: EnvSource): {
   botToken: string;
   chatId?: string;
 } {
@@ -48,12 +54,12 @@ function optionalKey(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Environment {
+export function loadEnvironment(source: EnvSource): Environment {
   const normalized = {
     ...source,
     ALCHEMY_API_KEY: optionalKey(source.ALCHEMY_API_KEY) ?? optionalKey(source.Alchemy_API_KEY),
     HELIUS_API_KEY: optionalKey(source.HELIUS_API_KEY),
-  } as NodeJS.ProcessEnv;
+  };
 
   return environmentSchema.parse(normalized);
 }

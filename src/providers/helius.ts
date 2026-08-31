@@ -10,6 +10,7 @@
  */
 import type { SupportedChain } from '../chains/registry.js';
 import type { RpcParams } from './json-rpc.js';
+import { base64ToBytes, bytesToBase64, bytesToHex } from '../lib/bytes.js';
 
 export interface HeliusRpcClientOptions {
   apiKey: string;
@@ -119,11 +120,12 @@ export interface CensusResult {
  * Returns null for malformed/short slices instead of guessing.
  */
 export function decodeHolderSlice(base64: string): { owner: string; amount: bigint } | null {
-  const buffer = Buffer.from(base64, 'base64');
-  if (buffer.length < 40) return null;
+  const bytes = base64ToBytes(base64);
+  if (bytes.length < 40) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   return {
-    owner: buffer.subarray(0, 32).toString('hex'),
-    amount: buffer.readBigUInt64LE(32),
+    owner: bytesToHex(bytes.subarray(0, 32)),
+    amount: view.getBigUint64(32, true),
   };
 }
 

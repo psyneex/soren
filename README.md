@@ -22,16 +22,114 @@ activity — is retrieved or calculated automatically from free/public providers
 npm install
 npm run typecheck
 npm test
-npm run build
-npm run dev:api     # API on http://127.0.0.1:3000
-npm run dev:worker  # scheduled monitoring worker
+npm run build        # emits dist/ (library build; the Worker is bundled by Wrangler)
+npm run dev          # `wrangler dev` — local Worker with cron + HTTP
+npm run deploy       # `wrangler deploy` — publish to Cloudflare
 ```
 
-The API and worker require the variables in `.env.example`:
+## Cloudflare deployment
 
-- `ALCHEMY_API_KEY` (multi-chain) **or** `HELIUS_API_KEY` (Solana-only mode)
-- `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
-- `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (optional; enables signal alerts)
+Soren runs as a stateless **Cloudflare Worker** with a `scheduled` cron handler
+(one monitoring cycle per tick) and a `fetch` HTTP handler (health, status, and
+the watchlist API). A single Worker replaces the old Fastify API and the
+`setInterval` worker.
+
+### Prerequisites
+
+- Node.js 20+
+- A Cloudflare account with Workers enabled
+- A Supabase project with the migrations in `supabase/migrations/` applied
+- At least one on-chain provider key (Alchemy multi-chain, or Helius for Solana)
+
+### Authentication
+
+```sh
+npx wrangler login
+```
+
+### Secret configuration
+
+Secrets are **never** committed. Production secrets are set via Wrangler; local
+development uses `.dev.vars` (git-ignored).
+
+**Production** (set each secret — Wrangler encrypts and stores them):
+
+```sh
+echo "https://your-project.supabase.co"     | wrangler secret put SUPABASE_URL
+echo "your-service-role-key"                | wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+echo "your-alchemy-key"                     | wrangler secret put ALCHEMY_API_KEY
+# Optional:
+echo "your-bot-token"                       | wrangler secret put TELEGRAM_BOT_TOKEN
+echo "your-chat-id"                         | wrangler secret put TELEGRAM_CHAT_ID
+```
+
+**Local development** — copy `.dev.vars.example` to `.dev.vars` and fill in real
+values. `wrangler dev` reads `.dev.vars` automatically. `.dev.vars` is
+git-ignored and must never be committed; production uses `wrangler secret`, not
+this file.
+
+### Cron configuration
+
+The schedule is configured in `wrangler.jsonc` under `triggers.crons` (not in
+application logic). Default: every hour (`0 * * * *`). Edit the array and
+redeploy to change it. Cloudflare supports standard 5-field cron expressions.
+
+### Local development
+
+```sh
+npm run dev        # starts the Worker locally on http://8787 with cron + HTTP
+```
+
+Test the HTTP endpoints:
+
+```sh
+curl http://localhost:8787/health
+curl http://localhost:8787/status
+```
+
+Trigger a manual monitoring cycle (dev/inspection only):
+
+```sh
+curl http://localhost:8787/run
+```
+
+The smoke and e2e scripts read from the environment (use `tsx --env-file .env`):
+
+```sh
+npx tsx --env-file .env src/monitor/smoke.ts
+```
+
+### Deployment
+
+```sh
+npm run deploy
+```
+
+After deploy, the Worker URL and cron are visible in the Cloudflare dashboard
+under Workers & Pages → soren → Triggers / Settings.
+
+### GitHub automatic deployment
+
+Cloudflare Workers Builds can deploy automatically from a connected production
+branch — no GitHub Actions required. In the Cloudflare dashboard, link the
+GitHub repository under Workers & Pages → soren → Settings → Builds & deployments
+and choose the production branch. Wrangler reads `wrangler.jsonc` from the repo
+root, so each push to that branch triggers a build and deploy. Production secrets
+are pulled from Cloudflare's secret store (set via `wrangler secret put`), not
+from the repository.
+
+### Required production secrets
+
+| Secret | Required | Purpose |
+|---|---|---|
+| `SUPABASE_URL` | yes | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Supabase service-role key |
+| `ALCHEMY_API_KEY` | yes* | Multi-chain enrichment (EVM + Solana) |
+| `HELIUS_API_KEY` | yes* | Solana-only enrichment (census + 30d flow) |
+| `TELEGRAM_BOT_TOKEN` | no | Enables Telegram signal alerts |
+| `TELEGRAM_CHAT_ID` | no | Telegram chat/channel for alerts |
+
+\* At least one of `ALCHEMY_API_KEY` or `HELIUS_API_KEY` is required.
 
 ## Architecture
 

@@ -1,3 +1,5 @@
+import { bytesToBase64 } from '../lib/bytes.js';
+
 const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
 /** Decodes a base58 string (Solana-style addresses) into raw bytes. */
@@ -22,5 +24,5 @@ export function base58Decode(input: string): Uint8Array {
 }
 
 export function base64FromBase58(input: string): string {
-  return Buffer.from(base58Decode(input)).toString('base64');
+  return bytesToBase64(base58Decode(input));
 }

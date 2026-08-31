@@ -1,0 +1,15 @@
+# Local development secrets for `wrangler dev`.
+# Copy to .dev.vars and fill in real values. NEVER commit .dev.vars.
+# These mirror the production secret names set via `wrangler secret put`.
+# Production uses Cloudflare secrets, not this file.
+
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# At least one on-chain provider is required:
+ALCHEMY_API_KEY=your-alchemy-key
+# HELIUS_API_KEY=your-helius-key
+
+# Optional — enables Telegram signal alerts:
+# TELEGRAM_BOT_TOKEN=your-bot-token
+# TELEGRAM_CHAT_ID=your-chat-id

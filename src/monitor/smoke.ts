@@ -1,6 +1,10 @@
 /**
  * Live smoke test — exercises the full monitoring pipeline against real
  * providers WITHOUT persisting anything. Run: npx tsx src/monitor/smoke.ts
+ *
+ * Reads configuration from the environment (env vars or a .env file loaded by
+ * tsx --env-file). No Cloudflare-specific APIs are used, so this runs anywhere
+ * the Supabase and provider keys are set.
  */
 import { buildMonitorRuntime } from './runtime.js';
 import { TokenMonitor } from './cycle.js';
@@ -14,7 +18,7 @@ const WALLET_C = '3QJ3a1fA4zC5k2yq8LwZ9v4K4gkL3dF2hM5U7QwZkNQ4';
 const PREVIEW_ID = '00000000-0000-4000-8000-000000000001';
 
 async function main(): Promise<void> {
-  const { deps } = buildMonitorRuntime();
+  const { deps } = buildMonitorRuntime(process.env);
   console.log('[smoke] provider:', deps.provider.providerName, 'telegram:', deps.alerting ? 'yes' : 'no');
 
   const entry: WatchlistToken = {

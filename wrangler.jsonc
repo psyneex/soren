@@ -1,0 +1,30 @@
+/**
+ * Wrangler configuration for the Soren Cloudflare Worker.
+ *
+ * Non-secret configuration lives here as plain `vars`. Secrets are NEVER put
+ * here — they are set via `wrangler secret put <NAME>` (production) or via
+ * `.dev.vars` (local development only; that file is git-ignored).
+ *
+ * The cron trigger below drives the scheduled monitoring cycle. The interval
+ * is configured here (Wrangler), not in application logic, per AGENTS.md.
+ * The Worker is invoked at most once per cron tick; each tick is stateless.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "soren",
+  "main": "src/apps/worker.ts",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "vars": {
+    "DEFAULT_CHAIN": "solana"
+  },
+
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}
