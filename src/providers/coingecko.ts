@@ -119,7 +119,10 @@ export class CoinGeckoClient {
     };
 
     if (this.cache) {
-      return this.cache.memoize(`coingecko:regime:${chain}`, 10 * 60_000, produce);
+      // 30-minute window: regime inputs are 24h-scale changes; wider caching
+      // trades negligible staleness for far fewer CoinGecko public-API hits
+      // (the keyless endpoint saturates with 429s otherwise).
+      return this.cache.memoize(`coingecko:regime:${chain}`, 30 * 60_000, produce);
     }
     return produce();
   }

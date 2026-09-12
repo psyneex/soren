@@ -51,7 +51,7 @@ export class JsonRpcClient {
     chain: SupportedChain,
     method: string,
     params: RpcParams,
-    maxAttempts = 3,
+    maxAttempts = 4,
   ): Promise<unknown> {
     const url = getRpcUrl(chain, this.options.apiKey);
     let lastError: unknown;
@@ -87,7 +87,9 @@ export class JsonRpcClient {
         const shouldRetry = (rpcError !== null && rpcError.retryable) || networkError;
         if (!shouldRetry || attempt === maxAttempts - 1) break;
 
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        // Exponential backoff: Alchemy throughput (CU/s) errors need a real
+        // cooldown — a 300ms tap does not outlive a saturated per-second window.
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * 2 ** attempt, 4000)));
       }
     }
 
@@ -144,7 +146,7 @@ export class JsonRpcClient {
         const networkError = error instanceof TypeError;
         const shouldRetry = (rpcError !== null && rpcError.retryable) || networkError;
         if (!shouldRetry || attempt === maxAttempts - 1) break;
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, Math.min(500 * 2 ** attempt, 4000)));
       }
     }
 

@@ -238,14 +238,13 @@ function tokenAmountDelta(
 }
 
 /**
- * Decodes transactions in bounded JSON-RPC batches: each HTTP request carries
- * up to TX_BATCH_SIZE getTransaction calls, so Cloudflare's per-invocation
- * subrequest budget (50 on the free plan) is not exhausted by per-signature
- * fetches (previously up to 120+ individual calls per wallet). Results are
- * per-entry: failed/errored entries resolve to null (treated as undecodable,
- * never fabricated).
+ * Decodes transactions in bounded, paced JSON-RPC batches. Each HTTP request
+ * carries up to TX_BATCH_SIZE getTransaction calls (one Cloudflare subrequest
+ * per batch), with a cooldown between batches so the burst stays under
+ * Alchemy's compute-units-per-second throughput cap (free tier).
  */
-const TX_BATCH_SIZE = 20;
+const TX_BATCH_SIZE = 10;
+const TX_BATCH_COOLDOWN_MS = 250;
 
 async function fetchTransactionsBatched(
   rpc: SolanaRpcCaller,
@@ -255,6 +254,9 @@ async function fetchTransactionsBatched(
   const unique = [...new Set(signatures.filter((sig) => typeof sig === 'string' && sig.length > 0))];
   const results = new Map<string, unknown | null>();
   for (let offset = 0; offset < unique.length; offset += TX_BATCH_SIZE) {
+    if (offset > 0) {
+      await new Promise((resolve) => setTimeout(resolve, TX_BATCH_COOLDOWN_MS));
+    }
     const chunk = unique.slice(offset, offset + TX_BATCH_SIZE);
     const batch = await rpc.callBatch(
       chain,
