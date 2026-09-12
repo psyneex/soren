@@ -243,7 +243,7 @@ export async function buildMonitoringStatus(deps: MonitorDeps, now: Date = deps.
     providers: {
       enrichment: deps.provider.providerName,
       market: 'dexscreener',
-      regime: deps.coingecko ? 'coingecko' : null,
+      regime: deps.marketReference ? 'market-reference' : null,
       regimeHealth,
       regimeNotes,
     },

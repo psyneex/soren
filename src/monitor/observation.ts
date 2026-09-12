@@ -1,7 +1,7 @@
 /**
  * Observation collector — assembles a single monitoring observation for one
  * watchlist token from the provider gateway (on-chain enrichment), DexScreener
- * (primary free market data), and the CoinGecko regime reference.
+ * (primary free market data), and the Binance market-reference regime data.
  *
  * Every part retains explicit provenance; provider failures degrade to notes
  * and nulls instead of fabricated values. Honest zeros (a wallet with no token
@@ -10,7 +10,7 @@
  */
 import type { ProviderAdapter, TokenEnrichment } from '../providers/provider.js';
 import type { DexScreenerClient } from '../providers/dexscreener.js';
-import type { CoinGeckoClient } from '../providers/coingecko.js';
+import type { MarketReferenceClient } from '../providers/market-reference.js';
 import type {
   HolderConcentration,
   MarketObservation,
@@ -36,7 +36,7 @@ export interface TokenObservation {
 export interface ObservationDeps {
   provider: ProviderAdapter;
   dexscreener: DexScreenerClient;
-  coingecko: CoinGeckoClient | null;
+  marketReference: MarketReferenceClient | null;
 }
 
 const UNKNOWN_MARKET: MarketObservation = {
@@ -127,7 +127,7 @@ export async function collectObservation(
     notes: [...dex.notes],
   };
 
-  const regime = deps.coingecko ? await deps.coingecko.fetchRegime(chain) : null;
+  const regime = deps.marketReference ? await deps.marketReference.fetchRegime(chain) : null;
   if (!regime) {
     notes.push('No regime provider configured; market regime unavailable.');
   }

@@ -14,7 +14,7 @@ The user enters only:
 
 Everything else — price, market cap, FDV, liquidity, volume, holders, flows, balances,
 activity — is retrieved or calculated automatically from free/public providers
-(Alchemy RPC, DexScreener, CoinGecko). Nansen is **not** a runtime dependency.
+(Alchemy RPC, DexScreener, Binance public API). Nansen is **not** a runtime dependency.
 
 ## Commands
 

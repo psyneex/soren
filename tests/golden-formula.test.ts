@@ -46,7 +46,7 @@ function regime(): RegimeObservation {
     totalMarketCapChange24hPct: 1.5,
     benchmarkChange24hPct: 2,
     benchmarkId: 'solana',
-    provider: 'coingecko',
+    provider: 'market-reference',
     observedAt: '2026-08-30T12:00:00Z',
     notes: [],
   };

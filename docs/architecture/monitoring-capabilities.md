@@ -17,8 +17,8 @@ retrieved or calculated automatically.
   pair age, taker counts) on every chain, cached per cycle.
 - Alchemy — primary on-chain provider for all chains (EVM RPC + Prices API + Solana RPC).
   Provides wallet balances, activity, and bounded 30-day wallet flow via standard RPC.
-- CoinGecko — free market-regime reference data (BTC, chain-native benchmark, broad
-  market cap), cached for 10 minutes (≈2 requests per 60-minute cycle).
+- Binance public API — free, keyless market-regime reference data (BTC, chain-native
+  benchmark 24h changes), cached for 30 minutes. No API key, no monthly limit.
 
 ## Monitoring pipeline (worker)
 

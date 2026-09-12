@@ -32,7 +32,7 @@ function snapshot(overrides: Partial<NewSnapshotRecord> = {}): SnapshotRecord {
     chain: 'solana',
     tokenAddress: 'MINT111111111111111111111111111111111111111',
     observedAt: '2026-09-12T09:10:14Z',
-    source: 'alchemy+dexscreener+coingecko',
+    source: 'alchemy+dexscreener+market-reference',
     raw: {},
     features: {
       components: {
@@ -45,7 +45,7 @@ function snapshot(overrides: Partial<NewSnapshotRecord> = {}): SnapshotRecord {
         volumeConfirmation: { component: 'volumeConfirmation', value: 62.63, status: 'OK', inputs: {}, notes: [] },
         marketRegime: {
           component: 'marketRegime', value: null, status: 'UNAVAILABLE',
-          inputs: { regimeNotes: ['CoinGecko unavailable: CoinGecko HTTP 403 for /coins/markets'] },
+          inputs: { regimeNotes: ['Market reference unavailable: Binance HTTP 503 for /api/v3/ticker/24hr'] },
           notes: ['All regime reference inputs (BTC, chain-native, broad market) were unavailable.'],
         },
       },
@@ -69,7 +69,7 @@ function deps(tokens: WatchlistToken[], snapshotsByToken: Record<string, Snapsho
   return {
     provider: { providerName: 'alchemy' } as MonitorDeps['provider'],
     dexscreener: {} as MonitorDeps['dexscreener'],
-    coingecko: null,
+    marketReference: null,
     watchlist: {
       list: vi.fn(), listActive: vi.fn().mockResolvedValue(tokens),
       get: vi.fn(), findByChainAndAddress: vi.fn(), create: vi.fn(), setStatus: vi.fn(), updateMonitoringState: vi.fn(),
@@ -87,13 +87,13 @@ function deps(tokens: WatchlistToken[], snapshotsByToken: Record<string, Snapsho
 }
 
 describe('buildMonitoringStatus', () => {
-  it('reports regime DEGRADED with provider notes and acceleration readiness for the 403-recovery scenario', async () => {
+  it('reports regime DEGRADED with provider notes and acceleration readiness for the recovery scenario', async () => {
     const token = watchToken();
     const status: MonitoringStatus = await buildMonitoringStatus(deps([token], { 'token-1': [snapshot()] }), NOW);
 
     expect(status.nextTickAt).toBe('2026-09-12T11:00:00.000Z');
     expect(status.providers.regimeHealth).toBe('DEGRADED');
-    expect(status.providers.regimeNotes[0]).toContain('403');
+    expect(status.providers.regimeNotes[0]).toContain('503');
 
     const entry: TokenMonitoringStatus = status.tokens[0];
     expect(entry.lastEvaluationStatus).toBe('INCOMPLETE');
@@ -105,7 +105,7 @@ describe('buildMonitoringStatus', () => {
 
     const regime = entry.components.find((component) => component.component === 'marketRegime');
     expect(regime?.status).toBe('UNAVAILABLE');
-    expect(regime?.notes[0]).toContain('403');
+    expect(regime?.notes[0]).toContain('503');
   });
 
   it('reports score NOT expected next when the prior snapshot is younger than the acceleration minimum lag', async () => {

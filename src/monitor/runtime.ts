@@ -11,7 +11,7 @@
 import { loadEnvironment, loadTelegramConfig, type EnvSource } from '../config/env.js';
 import { createDatabaseClient } from '../database/client.js';
 import { TtlCache } from '../providers/cache.js';
-import { CoinGeckoClient } from '../providers/coingecko.js';
+import { MarketReferenceClient } from '../providers/market-reference.js';
 import { DexScreenerClient } from '../providers/dexscreener.js';
 import { createEnrichmentGateway } from '../providers/monitor-provider.js';
 import {
@@ -42,7 +42,7 @@ export function buildMonitorRuntime(env: EnvSource, clock: () => Date = () => ne
   });
   const cache = new TtlCache();
   const dexscreener = new DexScreenerClient({ cache });
-  const coingecko = new CoinGeckoClient({ cache });
+  const marketReference = new MarketReferenceClient({ cache });
 
   let alerting: SignalAlerter | null = null;
   if (environment.TELEGRAM_BOT_TOKEN && environment.TELEGRAM_CHAT_ID) {
@@ -55,7 +55,7 @@ export function buildMonitorRuntime(env: EnvSource, clock: () => Date = () => ne
   const deps: MonitorDeps = {
     provider,
     dexscreener,
-    coingecko,
+    marketReference,
     watchlist: new SupabaseWatchlistRepository(db),
     snapshots: new SupabaseSnapshotRepository(db),
     signals: new SupabaseSignalEventRepository(db),

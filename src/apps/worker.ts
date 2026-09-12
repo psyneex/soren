@@ -73,7 +73,7 @@ async function runMonitoringCycle(env: WorkerEnv): Promise<void> {
     providers: {
       enrichment: deps.provider.providerName,
       market: 'dexscreener',
-      regime: deps.coingecko ? 'coingecko' : null,
+      regime: deps.marketReference ? 'market-reference' : null,
     },
     defaultChain: environment.DEFAULT_CHAIN,
     telegramConfigured: Boolean(environment.TELEGRAM_BOT_TOKEN && environment.TELEGRAM_CHAT_ID),
@@ -141,7 +141,7 @@ async function handleApi(request: Request, env: WorkerEnv, url: URL): Promise<Re
     }
     return json({
       api: { status: 'ok', service: 'soren-worker' },
-      providers: { enrichment: deps.provider.providerName, market: 'dexscreener', regime: deps.coingecko ? 'coingecko' : null },
+      providers: { enrichment: deps.provider.providerName, market: 'dexscreener', regime: deps.marketReference ? 'market-reference' : null },
       defaultChain: getDefaultChain(),
       telegramConfigured: Boolean(environment.TELEGRAM_BOT_TOKEN && environment.TELEGRAM_CHAT_ID),
       watchlistObservationIntervalMinutes: environment.WATCHLIST_OBSERVATION_INTERVAL_MINUTES,
