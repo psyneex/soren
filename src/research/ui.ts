@@ -37,6 +37,14 @@ const STYLES = `
     .badge.SCORED { background: #14532d; color: #86efac; }
     .badge.INCOMPLETE { background: #713f12; color: #fde68a; }
     .badge.FAILED { background: #450a0a; color: #fca5a5; }
+    .badge.OK { background: #14532d; color: #86efac; }
+    .badge.UNAVAILABLE { background: #713f12; color: #fde68a; }
+    .badge.HEALTHY { background: #14532d; color: #86efac; }
+    .badge.DEGRADED { background: #713f12; color: #fde68a; }
+    .badge.UNKNOWN { background: #334155; color: #cbd5e1; }
+    .badge.IGNORE { background: #334155; color: #cbd5e1; }
+    .chip { display: inline-block; background: #450a0a; color: #fca5a5; border-radius: 6px; padding: 1px 7px; font-size: 11px; margin: 1px 2px; }
+    .chip.wait { background: #713f12; color: #fde68a; }
     .score-num { font-size: 42px; font-weight: 700; }
     .score-num.incomplete { font-size: 24px; color: #fca5a5; }
     .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
@@ -110,6 +118,11 @@ export function renderAppPage(): string {
   </form>
 
   <div id="result"></div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Monitoring status</h2>
+    <div id="monitoringStatus">Loading…</div>
+  </div>
 
   <div class="panel">
     <h2 style="margin-top:0">Watchlist</h2>
@@ -232,6 +245,56 @@ export function renderAppPage(): string {
     });
   }
 
+  function when(v) { return v == null ? '—' : new Date(v).toLocaleString(); }
+
+  function waitChip(component, accelerationReadyAt, nextTickAt) {
+    var heals = component === 'accumulationAcceleration' || component === 'marketRegime' || component === 'relativeStrength';
+    var ready = accelerationReadyAt != null && Date.parse(accelerationReadyAt) <= Date.parse(nextTickAt);
+    return '<span class="chip' + (heals ? ' wait' : '') + '">' + esc(component) + (heals && !ready ? ' ⏳' : '') + '</span>';
+  }
+
+  async function loadMonitoringStatus() {
+    var statusEl = document.getElementById('monitoringStatus');
+    try {
+      var data = await api('GET', '/monitoring-status');
+      var providers = data.providers || {};
+      var rows = (data.tokens || []).map(function (entry) {
+        var missing = (entry.missingInputs || []).map(function (component) {
+          return waitChip(component, entry.accelerationReadyAt, data.nextTickAt);
+        }).join(' ') || '<span class="muted">none</span>';
+        return '<tr>' +
+          '<td><a href="/watchlist/' + esc(entry.tokenId) + '/view">' + esc(entry.symbol || shortAddr(entry.tokenAddress)) + '</a></td>' +
+          '<td>' + badge(entry.currentState) + '</td>' +
+          '<td>' + when(entry.lastObservedAt) + '</td>' +
+          '<td>' + (entry.lastEvaluationStatus ? badge(entry.lastEvaluationStatus) : '<span class="muted">none yet</span>') + '</td>' +
+          '<td>' + (entry.lastScore != null ? num(entry.lastScore) : '—') + '</td>' +
+          '<td>' + badge(entry.scoreExpectedNext) + '</td>' +
+          '<td>' + missing + '</td>' +
+          '</tr>';
+      }).join('');
+      var regimeNotes = (providers.regimeNotes || []).length
+        ? '<p class="note">Regime provider: ' + (providers.regimeNotes || []).map(esc).join(' · ') + '</p>'
+        : '';
+      var tokenNotes = (data.tokens || []).filter(function (entry) { return (entry.notes || []).length > 0; })
+        .map(function (entry) { return '<p class="note">' + esc(entry.symbol || shortAddr(entry.tokenAddress)) + ': ' + (entry.notes || []).map(esc).join(' ') + '</p>'; })
+        .join('');
+      statusEl.innerHTML =
+        '<p class="hint" style="margin-top:0">Last derived ' + when(data.generatedAt) + ' · next cron tick <strong>' + when(data.nextTickAt) + '</strong> · ' + esc(data.cronSchedule) + '</p>' +
+        '<div class="kv">' +
+          '<div class="item"><div class="key">On-chain enrichment</div><div class="val">' + esc(providers.enrichment || '—') + '</div></div>' +
+          '<div class="item"><div class="key">Market data</div><div class="val">' + esc(providers.market || '—') + '</div></div>' +
+          '<div class="item"><div class="key">Regime reference</div><div class="val">' + esc(providers.regime || 'none') + '</div></div>' +
+          '<div class="item"><div class="key">Regime health</div><div class="val">' + badge(providers.regimeHealth) + '</div></div>' +
+        '</div>' + regimeNotes +
+        '<table style="margin-top:12px"><thead><tr><th>Token</th><th>State</th><th>Last observed</th><th>Last evaluation</th><th>Score</th><th>Next score</th><th>Missing now</th></tr></thead><tbody>' +
+          (rows || '<tr><td colspan="7" class="note">Watchlist is empty.</td></tr>') + '</tbody></table>' +
+        '<p class="muted">⏳ marks a gap that self-heals by waiting (history/provider gaps) — e.g. accumulation acceleration needs a prior snapshot at least 1h old. Red chips without ⏳ need data to become available.</p>' +
+        tokenNotes;
+    } catch (error) {
+      statusEl.innerHTML = '<div class="error">' + esc(error.message) + '</div>';
+    }
+  }
+
   async function loadWatchlist() {
     try {
       var data = await api('GET', '/watchlist');
@@ -268,6 +331,7 @@ export function renderAppPage(): string {
   });
 
   loadWatchlist();
+  loadMonitoringStatus();
 })();
 </script>
 </body>
@@ -286,6 +350,11 @@ export function renderWatchDetailPage(token: WatchlistToken): string {
     <div class="kv">
       ${(token.smartMoneyWallets || []).map((wallet) => `<div class="item"><div class="key">Wallet</div><div class="val">${esc(wallet)}</div></div>`).join('')}
     </div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Latest evaluation — Golden Formula components</h2>
+    <div id="components">Loading…</div>
   </div>
 
   <div class="panel"><h2 style="margin-top:0">Signal history</h2><div id="signals">Loading…</div></div>
@@ -312,6 +381,32 @@ export function renderWatchDetailPage(token: WatchlistToken): string {
     try {
       var detail = await api('/watchlist/' + TOKEN_ID);
 
+      var latest = (detail.snapshots || [])[0] || null;
+      var componentsHtml = '';
+      if (latest) {
+        var components = (latest.features || {}).components || {};
+        var names = ['smartMoneyAccumulation', 'accumulationAcceleration', 'relativeStrength', 'volumeConfirmation', 'marketRegime'];
+        componentsHtml = names.map(function (name) {
+          var component = components[name] || {};
+          var notes = (component.notes || []).map(esc).join('<br>');
+          return '<div class="item"><div class="key">' + esc(name) + '</div>' +
+            '<div class="val">' + (component.value != null ? num(component.value) : '—') + ' ' + badge(component.status || 'UNAVAILABLE') + '</div>' +
+            (notes ? '<div class="note">' + notes + '</div>' : '') +
+            '</div>';
+        }).join('');
+        componentsHtml =
+          '<p class="hint" style="margin-top:0">Snapshot ' + when(latest.observedAt) + ' · evaluation ' + badge(latest.evaluationStatus) +
+          ' · score <strong>' + (latest.score != null ? num(latest.score) : '—') + '</strong> · source ' + esc(latest.source) + '</p>' +
+          '<div class="kv">' + componentsHtml + '</div>' +
+          ((latest.missingInputs || []).length
+            ? '<p class="note">Missing: ' + (latest.missingInputs || []).map(esc).join(', ') +
+              ' — an INCOMPLETE evaluation never invents a score; the components below explain each gap.</p>'
+            : '');
+      } else {
+        componentsHtml = '<p class="note">No snapshots yet — the worker observes every ACTIVE token once per interval. The first evaluation is expected INCOMPLETE (accumulation acceleration needs a prior snapshot at least 1h old).</p>';
+      }
+      document.getElementById('components').innerHTML = componentsHtml;
+
       var signals = (detail.signals || []).map(function (signal) {
         var evidence = signal.evidence || {};
         return '<tr><td>' + when(signal.generatedAt) + '</td><td>' + esc(signal.fromState || '—') + ' → ' + badge(signal.toState) +
@@ -337,13 +432,14 @@ export function renderWatchDetailPage(token: WatchlistToken): string {
           return esc(gate.gate) + '=' + esc(gate.verdict);
         }).join(', ');
         return '<tr><td>' + when(snapshot.observedAt) + '</td><td>' + badge(snapshot.evaluationStatus) + '</td>' +
-          '<td>' + (snapshot.score != null ? num(snapshot.score) : '—') + '</td><td>' + badge(snapshot.signal) +
-          '</td><td>' + num(metrics.priceUsd, 8) + '</td><td>' + num(metrics.liquidityUsd, 0) + '</td>' +
+          '<td>' + (snapshot.score != null ? num(snapshot.score) : '—') + '</td><td>' + badge(snapshot.signal) + '</td>' +
+          '<td class="note">' + ((snapshot.missingInputs || []).map(esc).join(', ') || '—') + '</td>' +
+          '<td>' + num(metrics.priceUsd, 8) + '</td><td>' + num(metrics.liquidityUsd, 0) + '</td>' +
           '<td>' + num(metrics.volume24hUsd, 0) + '</td><td>' + esc(snapshot.source) + '</td>' +
           '<td class="note">' + (gates || '—') + '</td></tr>';
       }).join('');
       document.getElementById('snapshots').innerHTML = snapshots
-        ? '<table><thead><tr><th>Observed</th><th>Status</th><th>Score</th><th>Signal</th><th>Price</th><th>Liquidity</th><th>Volume 24h</th><th>Source</th><th>Gates</th></tr></thead><tbody>' + snapshots + '</tbody></table>'
+        ? '<table><thead><tr><th>Observed</th><th>Status</th><th>Score</th><th>Signal</th><th>Missing</th><th>Price</th><th>Liquidity</th><th>Volume 24h</th><th>Source</th><th>Gates</th></tr></thead><tbody>' + snapshots + '</tbody></table>'
         : '<p class="note">No snapshots yet — the worker observes every ACTIVE token once per interval.</p>';
     } catch (error) {
       document.getElementById('signals').innerHTML = '<div class="error">' + esc(error.message) + '</div>';

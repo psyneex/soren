@@ -16,6 +16,7 @@
  */
 import { getDefaultChain } from '../chains/registry.js';
 import { MonitorRunner, TokenMonitor } from '../monitor/cycle.js';
+import { buildMonitoringStatus } from '../monitor/status.js';
 import { buildMonitorRuntime } from '../monitor/runtime.js';
 import { renderAppPage, renderWatchDetailPage } from '../research/ui.js';
 import { validateWatchlistInput } from '../research/input.js';
@@ -127,6 +128,10 @@ async function handleApi(request: Request, env: WorkerEnv, url: URL): Promise<Re
   if (path === '/health' && method === 'GET') {
     return json({ status: 'ok', service: 'soren-worker' });
   }
+  if (path === '/monitoring-status' && method === 'GET') {
+    const status = await buildMonitoringStatus(deps);
+    return json(status);
+  }
   if (path === '/status' && method === 'GET') {
     let watchlistCount: number | null = null;
     try {
@@ -179,7 +184,13 @@ async function handleApi(request: Request, env: WorkerEnv, url: URL): Promise<Re
   if (watchlistMatch && method === 'GET') {
     const token = await loadTokenOr404(deps, watchlistMatch[1]);
     if (!token) return json({ error: 'watchlist_token_not_found' }, 404);
-    return json({ token });
+    const limit = limitSchema.parse(url.searchParams.get('limit'));
+    const [signals, outcomes, snapshots] = await Promise.all([
+      deps.signals.listRecent(token.id, limit),
+      deps.outcomes.listByToken(token.id, limit),
+      deps.snapshots.listRecent(token.id, limit),
+    ]);
+    return json({ token, signals, outcomes, snapshots });
   }
   if (watchlistMatch && method === 'DELETE') {
     const token = await loadTokenOr404(deps, watchlistMatch[1]);
