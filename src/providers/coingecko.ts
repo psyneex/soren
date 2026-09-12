@@ -25,6 +25,8 @@ export interface CoinGeckoClientOptions {
   fetch?: typeof globalThis.fetch;
   cache?: TtlCacheLike;
   now?: () => Date;
+  /** Bounded retry attempts for transient failures (429 / 5xx / network). */
+  maxAttempts?: number;
 }
 
 interface MarketRow {
@@ -42,12 +44,15 @@ export class CoinGeckoClient {
   private readonly baseUrl: string;
   private readonly cache: TtlCacheLike | null;
   private readonly now: () => Date;
+  private readonly maxAttempts: number;
 
   constructor(options: CoinGeckoClientOptions = {}) {
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    const fallback = globalThis.fetch;
+    this.fetcher = options.fetch ?? fallback.bind(globalThis);
     this.baseUrl = (options.baseUrl ?? 'https://api.coingecko.com/api/v3').replace(/\/$/, '');
     this.cache = options.cache ?? null;
     this.now = options.now ?? (() => new Date());
+    this.maxAttempts = options.maxAttempts ?? 3;
   }
 
   async fetchRegime(chain: string): Promise<RegimeObservation> {
@@ -120,10 +125,30 @@ export class CoinGeckoClient {
   }
 
   private async fetchJson<T>(path: string): Promise<T> {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, { method: 'GET' });
-    if (!response.ok) {
-      throw new Error(`CoinGecko HTTP ${response.status} for ${path.split('?')[0]}`);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < this.maxAttempts; attempt += 1) {
+      try {
+        const response = await this.fetcher(`${this.baseUrl}${path}`, {
+          method: 'GET',
+          headers: {
+            // CoinGecko's edge blocks bare/cloud default User-Agents with HTTP
+            // 403 (observed in production); a descriptive UA is required for
+            // the free public API.
+            'User-Agent': 'soren/0.1 (+https://github.com/psyneex/soren)',
+            Accept: 'application/json',
+          },
+        });
+        if (!response.ok) {
+          throw new Error(`CoinGecko HTTP ${response.status} for ${path.split('?')[0]}`);
+        }
+        return (await response.json()) as T;
+      } catch (error) {
+        lastError = error;
+        if (attempt < this.maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+        }
+      }
     }
-    return (await response.json()) as T;
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 }

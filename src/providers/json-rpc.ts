@@ -37,7 +37,8 @@ export class JsonRpcClient {
   private readonly fetcher: typeof globalThis.fetch;
 
   constructor(private readonly options: JsonRpcClientOptions) {
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    const fallback = globalThis.fetch;
+    this.fetcher = options.fetch ?? fallback.bind(globalThis);
   }
 
   async call(

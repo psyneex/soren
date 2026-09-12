@@ -160,7 +160,7 @@ async function handleApi(request: Request, env: WorkerEnv, url: URL): Promise<Re
     const input = validateWatchlistInput(await request.json().catch(() => null));
     const existing = await deps.watchlist.findByChainAndAddress(input.chain, input.tokenAddress);
     const entry: WatchlistToken = existing ?? {
-      id: 'preview', chain: input.chain, tokenAddress: input.tokenAddress, smartMoneyWallets: input.smartMoneyWallets,
+      id: crypto.randomUUID(), chain: input.chain, tokenAddress: input.tokenAddress, smartMoneyWallets: input.smartMoneyWallets,
       status: 'ACTIVE', currentState: 'NEW', entryPrice: null, entryAt: null, entrySnapshotId: null,
       lastObservedAt: null, lastScore: null, formulaVersion: null, createdAt: new Date().toISOString(),
     };

@@ -24,7 +24,8 @@ export class AlchemyPricesClient {
     options: AlchemyPricesClientOptions = {},
   ) {
     this.baseUrl = options.baseUrl ?? 'https://api.g.alchemy.com/prices/v1';
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    const fallback = globalThis.fetch;
+    this.fetcher = options.fetch ?? fallback.bind(globalThis);
   }
 
   async getPricesByAddress(

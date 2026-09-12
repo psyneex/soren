@@ -76,7 +76,8 @@ export class DexScreenerClient {
   private readonly cache: TtlCacheLike | null;
 
   constructor(private readonly options: DexScreenerClientOptions = {}) {
-    this.fetcher = options.fetch ?? globalThis.fetch;
+    const fallback = globalThis.fetch;
+    this.fetcher = options.fetch ?? fallback.bind(globalThis);
     this.cache = options.cache ?? null;
   }
 
