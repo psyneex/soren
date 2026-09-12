@@ -52,7 +52,7 @@ export class CoinGeckoClient {
     this.baseUrl = (options.baseUrl ?? 'https://api.coingecko.com/api/v3').replace(/\/$/, '');
     this.cache = options.cache ?? null;
     this.now = options.now ?? (() => new Date());
-    this.maxAttempts = options.maxAttempts ?? 3;
+    this.maxAttempts = options.maxAttempts ?? 2;
   }
 
   async fetchRegime(chain: string): Promise<RegimeObservation> {

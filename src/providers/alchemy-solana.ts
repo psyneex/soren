@@ -39,6 +39,7 @@ const FLOW_TX_DECODE_LIMIT = 120;
  */
 type SolanaRpcCaller = {
   call(chain: SupportedChain, method: string, params: RpcParams): Promise<unknown>;
+  callBatch(chain: SupportedChain, method: string, paramsList: RpcParams[]): Promise<Array<unknown | null>>;
 };
 
 const UNKNOWN_MARKET: MarketDataModel = {
@@ -236,6 +237,35 @@ function tokenAmountDelta(
   return matched ? total : null;
 }
 
+/**
+ * Decodes transactions in bounded JSON-RPC batches: each HTTP request carries
+ * up to TX_BATCH_SIZE getTransaction calls, so Cloudflare's per-invocation
+ * subrequest budget (50 on the free plan) is not exhausted by per-signature
+ * fetches (previously up to 120+ individual calls per wallet). Results are
+ * per-entry: failed/errored entries resolve to null (treated as undecodable,
+ * never fabricated).
+ */
+const TX_BATCH_SIZE = 20;
+
+async function fetchTransactionsBatched(
+  rpc: SolanaRpcCaller,
+  chain: SupportedChain,
+  signatures: string[],
+): Promise<Map<string, unknown | null>> {
+  const unique = [...new Set(signatures.filter((sig) => typeof sig === 'string' && sig.length > 0))];
+  const results = new Map<string, unknown | null>();
+  for (let offset = 0; offset < unique.length; offset += TX_BATCH_SIZE) {
+    const chunk = unique.slice(offset, offset + TX_BATCH_SIZE);
+    const batch = await rpc.callBatch(
+      chain,
+      'getTransaction',
+      chunk.map((signature) => [signature, { maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' }]),
+    );
+    chunk.forEach((signature, index) => results.set(signature, batch[index] ?? null));
+  }
+  return results;
+}
+
 async function fetchWalletActivity(
   rpc: SolanaRpcCaller,
   cache: TtlCache,
@@ -275,15 +305,19 @@ async function fetchWalletActivity(
   let net = 0;
 
   const sampled = inWindow.slice(0, TX_SAMPLE_LIMIT);
+  const transactions = await fetchTransactionsBatched(
+    rpc,
+    chain,
+    sampled.map((sig) => sig.signature ?? ''),
+  );
   for (const sig of sampled) {
     if (!sig.signature) continue;
-    const tx = (await cache.memoize(`sol:${chain}:tx:${sig.signature}`, 60 * 60_000, () =>
-      rpc.call(chain, 'getTransaction', [sig.signature, { maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' }]))) as {
+    const tx = transactions.get(sig.signature) as {
       meta?: {
         preTokenBalances?: Array<{ accountIndex: number; mint?: string; owner?: string; uiTokenAmount?: ParsedTokenAmount }>;
         postTokenBalances?: Array<{ accountIndex: number; uiTokenAmount?: ParsedTokenAmount }>;
       };
-    };
+    } | null;
     const delta = tokenAmountDelta(tx?.meta?.preTokenBalances ?? [], tx?.meta?.postTokenBalances ?? [], mint, wallet);
     if (delta != null && delta !== 0) {
       net += delta;
@@ -372,12 +406,13 @@ async function fetchWalletFlow30d(
   const timed = scan.signatures.filter((s) => typeof s.blockTime === 'number');
   const sampled = timed.slice(0, FLOW_TX_DECODE_LIMIT);
 
+  const transactions = await fetchTransactionsBatched(
+    rpc,
+    chain,
+    sampled.map((sig) => sig.signature),
+  );
   for (const sig of sampled) {
-    const tx = (await cache.memoize(`sol:${chain}:tx:${sig.signature}`, 60 * 60_000, () =>
-      rpc.call(chain, 'getTransaction', [
-        sig.signature,
-        { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0 },
-      ]))) as TokenBalanceTx;
+    const tx = transactions.get(sig.signature) as TokenBalanceTx | null;
     const { delta, matched } = walletTokenDelta(tx, mint, wallet);
     if (matched && delta !== 0) {
       net += delta;
